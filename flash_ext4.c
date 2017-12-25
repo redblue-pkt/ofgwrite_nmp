@@ -1,5 +1,9 @@
 #include <stdio.h>
 #include <getopt.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 int flash_ext4_kernel(char* device, char* filename, off_t kernel_file_size, int quiet, int no_write)
 {
@@ -129,6 +133,57 @@ int flash_ext4_rootfs(char* filename, int quiet, int no_write)
 		return 0;
 	}
 	sync();
+
+	char backup_file[64] = "";
+	if (access("/backup_flash.tar.gz", F_OK) == 0)
+		strcpy(backup_file, "/backup_flash.tar.gz");
+	else if (access("/newroot/backup_flash.tar.gz", F_OK) == 0)
+		strcpy(backup_file, "/newroot/backup_flash.tar.gz");
+
+	if (backup_file[0] != '\0')
+	{
+		my_printf("Found backup in %s\n", backup_file);
+		set_step("Copying backup to rootfs");
+		mkdir("/oldroot_bind/var", 777); //needed?
+		ret = copy_file(backup_file, "/oldroot_bind/var/backup_flash.tar.gz");
+		if (ret != 0)
+			my_printf("Error copying backup_flash.tar.gz\n");
+	}
+	sync();
+
 	ret = chdir("/"); // needed to be able to umount filesystem
 	return 1;
+}
+
+#define BUF_SIZE 1024
+copy_file(char *from, char *to)
+{
+	int inputFd, outputFd, openFlags;
+	mode_t filePerms;
+	ssize_t numRead;
+	char buf[BUF_SIZE];
+
+	inputFd = open(from, O_RDONLY);
+	if (inputFd == -1)
+		return -1;
+
+	openFlags = O_CREAT | O_WRONLY | O_TRUNC;
+	filePerms = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH; // rw-rw-rw-
+	outputFd = open(to, openFlags, filePerms);
+	if (outputFd == -1)
+		return -1;
+
+	while ((numRead = read(inputFd, buf, BUF_SIZE)) > 0)
+		if (write(outputFd, buf, numRead) != numRead)
+			my_printf("Error: Couldn't write whole buffer");
+
+	if (numRead == -1)
+		my_printf("Error: read");
+
+	if (close(inputFd) == -1)
+		my_printf("Error: close input");
+	if (close(outputFd) == -1)
+		my_printf("Error: close output");
+
+	return 0;
 }
