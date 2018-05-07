@@ -560,8 +560,8 @@ int check_neutrino_stopped()
 	{
 //		neutrino_found = exec_ps();
 
+		system("init 4");
 		system("killall start_neutrino 2>/dev/null");
-		system("killall rcS >/dev/null 2>&1");
 		int ret = system("pidof neutrino >/dev/null");
 		if (ret == 0)
 			neutrino_found = system("killall neutrino && sleep 3");
@@ -730,9 +730,7 @@ int umount_rootfs()
 	{
 		my_printf("Error Neutrino can't be stopped! Abort flashing.\n");
 		set_error_text("Error Neutrino can't be stopped! Abort flashing.");
-#if 0
 		ret = system("init 3");
-#endif
 		return 0;
 	}
 	show_main_window(1, ofgwrite_version);
@@ -746,9 +744,7 @@ int umount_rootfs()
 		my_printf("Error executing pivot_root!\n");
 		set_error_text("Error pivot_root! Abort flashing.");
 		sleep(5);
-#if 0
 		ret = system("init 3");
-#endif
 		return 0;
 	}
 

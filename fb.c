@@ -630,7 +630,7 @@ int show_main_window(int show_background_image, const char* version)
 
 	set_title("ofgwrite Flashing Tool");
 	char version_string[60];
-	strcpy(version_string, "written by Betacentauri v.");
+	strcpy(version_string, "written by Betacentauri  v.");
 	strcat(version_string, version);
 	strcat(version_string, " NMP-Edition");
 	set_sub_title(version_string);
