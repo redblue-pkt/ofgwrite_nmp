@@ -13,10 +13,11 @@
 #include <unistd.h>
 #include <errno.h>
 
-const char ofgwrite_version[] = "3.9.8";
+const char ofgwrite_version[] = "4.1.1";
 int flash_kernel = 0;
 int flash_rootfs = 0;
 int no_write     = 0;
+int force        = 0;
 int quiet        = 0;
 int show_help    = 0;
 int found_kernel_device = 0;
@@ -77,6 +78,7 @@ void printUsage()
 	my_printf("   -rmmcblkxpx --rootfs=mmcblkxpx  use mmcblkxpx device for rootfs flashing\n");
 	my_printf("   -mx --multi=x         flash multiboot partition x (x= 1, 2, 3,...). Only supported by some boxes.\n");
 	my_printf("   -n --nowrite          show only found image and mtd partitions (no write)\n");
+	my_printf("   -f --force            force kill neutrino\n");
 	my_printf("   -q --quiet            show less output\n");
 	my_printf("   -h --help             show help\n");
 }
@@ -132,7 +134,8 @@ int find_image_files(char* p)
 			 || strcmp(entry->d_name, "root_cfe_auto.jffs2") == 0	// other VU boxes
 			 || strcmp(entry->d_name, "oe_rootfs.bin") == 0			// DAGS boxes
 			 || strcmp(entry->d_name, "e2jffs2.img") == 0			// Spark boxes
-			 || strcmp(entry->d_name, "rootfs.tar.bz2") == 0)		// solo4k
+			 || strcmp(entry->d_name, "rootfs.tar.bz2") == 0		// solo4k
+			 || strcmp(entry->d_name, "rootfs.ubi") == 0)			// Zgemma H9
 #endif
 			if (strcmp(entry->d_name, "rootfs.tar.bz2") == 0)
 			{
@@ -153,12 +156,13 @@ int read_args(int argc, char *argv[])
 {
 	int option_index = 0;
 	int opt;
-	static const char *short_options = "k::r::nm:qh";
+	static const char *short_options = "k::r::nm:fqh";
 	static const struct option long_options[] = {
 												{"kernel" , optional_argument, NULL, 'k'},
 												{"rootfs" , optional_argument, NULL, 'r'},
 												{"nowrite", no_argument      , NULL, 'n'},
 												{"multi"  , required_argument, NULL, 'm'},
+												{"force"  , optional_argument, NULL, 'f'},
 												{"quiet"  , no_argument      , NULL, 'q'},
 												{"help"   , no_argument      , NULL, 'h'},
 												{NULL     , no_argument      , NULL,  0} };
@@ -213,6 +217,9 @@ int read_args(int argc, char *argv[])
 				break;
 			case 'n':
 				no_write = 1;
+				break;
+			case 'f':
+				force = 1;
 				break;
 			case 'q':
 				quiet = 1;
@@ -662,6 +669,7 @@ int umount_rootfs()
 	ret += mkdir("/newroot/dev/pts", 777);
 	ret += mkdir("/newroot/lib", 777);
 	ret += mkdir("/newroot/media", 777);
+	ret += mkdir("/newroot/mnt", 777);
 	ret += mkdir("/newroot/oldroot", 777);
 	ret += mkdir("/newroot/oldroot_bind", 777);
 	ret += mkdir("/newroot/proc", 777);
@@ -753,6 +761,7 @@ int umount_rootfs()
 	ret =  mount("/oldroot/dev/", "dev/", NULL, MS_MOVE, NULL);
 	ret += mount("/oldroot/proc/", "proc/", NULL, MS_MOVE, NULL);
 	ret += mount("/oldroot/sys/", "sys/", NULL, MS_MOVE, NULL);
+	ret += mount("/oldroot/mnt/", "mnt/", NULL, MS_MOVE, NULL);
 	ret += mount("/oldroot/tmp/", "tmp/", NULL, MS_MOVE, NULL);
 #if 0
 	ret += mount("/oldroot/var/volatile", "var/volatile/", NULL, MS_MOVE, NULL);
@@ -985,7 +994,7 @@ void find_kernel_rootfs_device()
 		return;
 	}
 
-	if (strcmp(rootfs_device, current_rootfs_device) != 0)
+	if (strcmp(rootfs_device, current_rootfs_device) != 0 && !force)
 	{
 		stop_neutrino_needed = 0;
 		my_printf("Flashing currently not running image\n");
@@ -1040,6 +1049,21 @@ int check_device_size()
 	}
 
 	return 1;
+}
+
+void handle_busybox_fatal_error()
+{
+	my_printf("Error flashing rootfs! System won't boot. Please flash backup! System will reboot in 60 seconds\n");
+	set_error_text1("Error untar rootfs. System won't boot!");
+	set_error_text2("Please flash backup! Rebooting in 60 sec");
+	if (stop_neutrino_needed)
+	{
+		sleep(60);
+		reboot(LINUX_REBOOT_CMD_RESTART);
+	}
+	sleep(30);
+	close_framebuffer();
+	return EXIT_FAILURE;
 }
 
 int main(int argc, char *argv[])
