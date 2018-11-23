@@ -255,8 +255,13 @@ static smallint scan_recursive(const char *path)
 							|| strcmp(ln, "/oldroot/usr/bin/ntfs-3g") == 0
 							|| strcmp(ln, "/oldroot/usr/share/platform/dvb_init") == 0
 							|| strcmp(ln, "/oldroot/usr/bin/nxserver") == 0
+							|| strcmp(ln, "/oldroot/usr/share/platform/dvb_init.bin") == 0
+							|| strcmp(ln, "/oldroot/usr/share/platform/nxserver") == 0
 							|| strcmp(ln, "/oldroot/usr/bin/showiframe") == 0
-							|| strcmp(ln, "/oldroot/usr/bin/libreader") == 0)
+							|| strcmp(ln, "/oldroot/usr/bin/libreader") == 0
+							|| ( strncmp(ln, "/oldroot/lib/modules/", 21) == 0
+								&& strstr(ln, "/extra/hi_play.ko") != NULL )
+						   )
 						{
 							my_printf("found vu or gb or octagon or ntfs process %s -> don't kill\n", ln);
 							retval = 0;

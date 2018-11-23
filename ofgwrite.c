@@ -13,7 +13,7 @@
 #include <unistd.h>
 #include <errno.h>
 
-const char ofgwrite_version[] = "4.1.1";
+const char ofgwrite_version[] = "4.1.7";
 int flash_kernel = 0;
 int flash_rootfs = 0;
 int no_write     = 0;
@@ -22,16 +22,11 @@ int quiet        = 0;
 int show_help    = 0;
 int found_kernel_device = 0;
 int found_rootfs_device = 0;
-int user_kernel = 0;
-int user_rootfs = 0;
 int newroot_mounted = 0;
 char kernel_filename[1000];
 char kernel_device[1000];
-char kernel_device_arg[1000];
 char rootfs_filename[1000];
 char rootfs_device[1000];
-char rootfs_device_arg[1000];
-char rootfs_ubi_device[1000];
 enum RootfsTypeEnum rootfs_type;
 char media_mounts[30][500];
 int media_mount_count = 0;
@@ -168,6 +163,8 @@ int read_args(int argc, char *argv[])
 												{NULL     , no_argument      , NULL,  0} };
 
 	multiboot_partition = -1;
+	user_kernel = 0;
+	user_rootfs = 0;
 
 	while ((opt= getopt_long(argc, argv, short_options, long_options, &option_index)) != -1)
 	{
@@ -177,7 +174,7 @@ int read_args(int argc, char *argv[])
 				flash_kernel = 1;
 				if (optarg)
 				{
-					if ((!strncmp(optarg, "mtd", 3)) || (!strncmp(optarg, "mmcblk", 6)))
+					if ((!strncmp(optarg, "mtd", 3)) || (!strncmp(optarg, "mmcblk", 6)) || (!strncmp(optarg, "sd", 2)))
 					{
 						my_printf("Flashing kernel with arg %s\n", optarg);
 						strcpy(kernel_device_arg, optarg);
@@ -191,7 +188,7 @@ int read_args(int argc, char *argv[])
 				flash_rootfs = 1;
 				if (optarg)
 				{
-					if ((!strncmp(optarg, "mtd", 3)) || (!strncmp(optarg, "mmcblk", 6)))
+					if ((!strncmp(optarg, "mtd", 3)) || (!strncmp(optarg, "mmcblk", 6)) || (!strncmp(optarg, "sd", 2)))
 					{
 						my_printf("Flashing rootfs with arg %s\n", optarg);
 						strcpy(rootfs_device_arg, optarg);
@@ -670,8 +667,16 @@ int daemonize()
 	return 1;
 }
 
-int umount_rootfs()
+int umount_rootfs(int steps)
 {
+	DIR *dir;
+	int multilib = 1;
+
+	if ((dir = opendir("/lib64")) == NULL)
+	{
+		multilib = 0;
+	}
+
 	int ret = 0;
 	my_printf("start umount_rootfs\n");
 	// the start script creates /newroot dir and mount tmpfs on it
@@ -695,6 +700,16 @@ int umount_rootfs()
 	ret += mkdir("/newroot/usr/lib", 777);
 	ret += mkdir("/newroot/usr/lib/autofs", 777);
 	ret += mkdir("/newroot/var", 777);
+	ret += mkdir("/newroot/var/volatile", 777);
+#if 0
+	if (multilib)
+	{
+		ret += mkdir("/newroot/lib64", 777);
+		ret += mkdir("/newroot/usr/lib64", 777);
+		ret += mkdir("/newroot/usr/lib64/autofs", 777);
+	}
+#endif
+
 	if (ret != 0)
 	{
 		my_printf("Error creating necessary directories\n");
@@ -703,17 +718,33 @@ int umount_rootfs()
 
 	// we need init and libs to be able to exec init u later
 	ret =  system("cp -arf /bin/busybox*     /newroot/bin");
-	ret += system("cp -arf /bin/bash*        /newroot/bin");
-#if 0
-	ret =  system("cp -arf /bin/busybox*     /newroot/bin");
 	ret += system("cp -arf /bin/sh*          /newroot/bin");
 	ret += system("cp -arf /bin/bash*        /newroot/bin");
-	ret += system("cp -arf /sbin/init*       /newroot/sbin");
-	ret += system("cp -arf /lib/libcrypt*    /newroot/lib");
-	ret += system("cp -arf /lib/libc*        /newroot/lib");
-	ret += system("cp -arf /lib/ld*          /newroot/lib");
-	ret += system("cp -arf /lib/libtinfo*    /newroot/lib");
-	ret += system("cp -arf /lib/libdl*       /newroot/lib");
+
+#if 0
+	if (multilib)
+	{
+		ret =  system("cp -arf /bin/busybox*     /newroot/bin");
+		ret += system("cp -arf /bin/sh*          /newroot/bin");
+		ret += system("cp -arf /bin/bash*        /newroot/bin");
+		ret += system("cp -arf /sbin/init*       /newroot/sbin");
+		ret += system("cp -arf /lib64/libc*        /newroot/lib64");
+		ret += system("cp -arf /lib64/ld*          /newroot/lib64");
+		ret += system("cp -arf /lib64/libtinfo*    /newroot/lib64");
+		ret += system("cp -arf /lib64/libdl*       /newroot/lib64");
+	}
+	else
+	{
+		ret =  system("cp -arf /bin/busybox*     /newroot/bin");
+		ret += system("cp -arf /bin/sh*          /newroot/bin");
+		ret += system("cp -arf /bin/bash*        /newroot/bin");
+		ret += system("cp -arf /sbin/init*       /newroot/sbin");
+		ret += system("cp -arf /lib/libc*        /newroot/lib");
+		ret += system("cp -arf /lib/ld*          /newroot/lib");
+		ret += system("cp -arf /lib/libtinfo*    /newroot/lib");
+		ret += system("cp -arf /lib/libdl*       /newroot/lib");
+	}
+#endif
 
 	if (ret != 0)
 	{
@@ -721,17 +752,62 @@ int umount_rootfs()
 		return 0;
 	}
 
+#if 0
+	// libcrypt is moved from /lib to /usr/libX in new OE versions
+	if (multilib)
+	{
+		ret = system("cp -arf /lib64/libcrypt*    /newroot/lib64");
+		if (ret != 0)
+		{
+			ret = system("cp -arf /usr/lib64/libcrypt*    /newroot/usr/lib64");
+			if (ret != 0)
+			{
+				my_printf("Error copying libcrypto lib\n");
+				return 0;
+			}
+		}
+	}
+	else
+	{
+		ret = system("cp -arf /lib/libcrypt*    /newroot/lib");
+		if (ret != 0)
+		{
+			ret = system("cp -arf /usr/lib/libcrypt*    /newroot/usr/lib");
+			if (ret != 0)
+			{
+				my_printf("Error copying libcrypto lib\n");
+				return 0;
+			}
+		}
+	}
+
 	// copy for automount ignore errors as autofs is maybe not installed
-	ret = system("cp -arf /usr/sbin/autom*  /newroot/bin");
-	ret += system("cp -arf /etc/auto*        /newroot/etc");
-	ret += system("cp -arf /lib/libpthread*  /newroot/lib");
-	ret += system("cp -arf /lib/libnss*      /newroot/lib");
-	ret += system("cp -arf /lib/libnsl*      /newroot/lib");
-	ret += system("cp -arf /lib/libresolv*   /newroot/lib");
-	ret += system("cp -arf /usr/lib/libtirp* /newroot/usr/lib");
-	ret += system("cp -arf /usr/lib/autofs/* /newroot/usr/lib/autofs");
-	ret += system("cp -arf /etc/nsswitch*    /newroot/etc");
-	ret += system("cp -arf /etc/resolv*      /newroot/etc");
+	if (multilib)
+	{
+		ret = system("cp -arf /usr/sbin/autom*  /newroot/bin");
+		ret += system("cp -arf /etc/auto*        /newroot/etc");
+		ret += system("cp -arf /lib64/libpthread*  /newroot/lib64");
+		ret += system("cp -arf /lib64/libnss*      /newroot/lib64");
+		ret += system("cp -arf /lib64/libnsl*      /newroot/lib64");
+		ret += system("cp -arf /lib64/libresolv*   /newroot/lib64");
+		ret += system("cp -arf /usr/lib64/libtirp* /newroot/usr/lib64");
+		ret += system("cp -arf /usr/lib64/autofs/* /newroot/usr/lib64/autofs");
+		ret += system("cp -arf /etc/nsswitch*    /newroot/etc");
+		ret += system("cp -arf /etc/resolv*      /newroot/etc");
+	}
+	else
+	{
+		ret = system("cp -arf /usr/sbin/autom*  /newroot/bin");
+		ret += system("cp -arf /etc/auto*        /newroot/etc");
+		ret += system("cp -arf /lib/libpthread*  /newroot/lib");
+		ret += system("cp -arf /lib/libnss*      /newroot/lib");
+		ret += system("cp -arf /lib/libnsl*      /newroot/lib");
+		ret += system("cp -arf /lib/libresolv*   /newroot/lib");
+		ret += system("cp -arf /usr/lib/libtirp* /newroot/usr/lib");
+		ret += system("cp -arf /usr/lib/autofs/* /newroot/usr/lib/autofs");
+		ret += system("cp -arf /etc/nsswitch*    /newroot/etc");
+		ret += system("cp -arf /etc/resolv*      /newroot/etc");
+	}
 
 	// Switch to user mode 1
 	my_printf("Switching to user mode 2\n");
@@ -751,10 +827,15 @@ int umount_rootfs()
 	if (!check_neutrino_stopped())
 	{
 		my_printf("Error Neutrino can't be stopped! Abort flashing.\n");
-		set_error_text("Error Neutrino can't be stopped! Abort flashing.");
+		set_error_text("Error neutrino can't be stopped! Abort flashing.");
 		ret = system("init 3");
 		return 0;
 	}
+
+	// some boxes don't allow to open framebuffer while e2 is running
+	// reopen framebuffer to show the GUI
+	close_framebuffer();
+	init_framebuffer(steps);
 	show_main_window(1, ofgwrite_version);
 	set_overall_text("Flashing image");
 	set_step_without_incr("Wait until Neutrino is stopped");
@@ -777,11 +858,9 @@ int umount_rootfs()
 	ret += mount("/oldroot/sys/", "sys/", NULL, MS_MOVE, NULL);
 	ret += mount("/oldroot/mnt/", "mnt/", NULL, MS_MOVE, NULL);
 	ret += mount("/oldroot/tmp/", "tmp/", NULL, MS_MOVE, NULL);
-#if 0
 	ret += mount("/oldroot/var/volatile", "var/volatile/", NULL, MS_MOVE, NULL);
 	// create link for tmp
 	ret += symlink("/var/volatile/tmp", "/tmp");
-#endif
 	if (ret != 0)
 	{
 		my_printf("Error move mounts to newroot\n");
@@ -812,8 +891,6 @@ int umount_rootfs()
 	// create link for mount/umount for autofs
 	ret = symlink("/bin/busybox", "/bin/mount");
 	ret += symlink("/bin/busybox", "/bin/umount");
-	ret += symlink("/bin/busybox", "/bin/sh");
-	ret += symlink("/bin/busybox", "/sbin/init");
 
 #if 0
 	// try to restart autofs
@@ -1077,7 +1154,7 @@ void handle_busybox_fatal_error()
 	}
 	sleep(30);
 	close_framebuffer();
-	return EXIT_FAILURE;
+	exit(EXIT_FAILURE);
 }
 
 int main(int argc, char *argv[])
@@ -1208,11 +1285,11 @@ int main(int argc, char *argv[])
 		// kill nmbd, smbd, rpc.mountd and rpc.statd -> otherwise remounting root read-only is not possible
 		if (!no_write && stop_neutrino_needed)
 		{
-#if 0
 			ret = system("killall nmbd");
 			ret = system("killall smbd");
 			ret = system("killall rpc.mountd");
 			ret = system("killall rpc.statd");
+#if 0
 			ret = system("/etc/init.d/softcam stop");
 			ret = system("killall CCcam");
 			ret = system("pkill -9 -f '[Oo][Ss][Cc][Aa][Mm]'");
@@ -1251,7 +1328,7 @@ int main(int argc, char *argv[])
 				close_framebuffer();
 				return EXIT_FAILURE;
 			}
-			if (!umount_rootfs())
+			if (!umount_rootfs(steps))
 			{
 				closelog();
 				close_framebuffer();
