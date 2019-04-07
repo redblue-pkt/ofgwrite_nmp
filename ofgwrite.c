@@ -117,23 +117,20 @@ int find_image_files(char* p)
 		{
 			if ((strstr(entry->d_name, "kernel") != NULL
 			  && strstr(entry->d_name, ".bin")   != NULL)			// ET-xx00, XP1000, VU boxes, DAGS boxes
-			 || strcmp(entry->d_name, "uImage") == 0)				// Spark boxes
+			 || strcmp(entry->d_name, "uImage") == 0)			// Spark boxes
 			{
 				strcpy(kernel_filename, path);
 				strcpy(&kernel_filename[strlen(path)], entry->d_name);
 				stat(kernel_filename, &kernel_file_stat);
 				my_printf("Found kernel file: %s\n", kernel_filename);
 			}
-#if 0
 			if (strcmp(entry->d_name, "rootfs.bin") == 0			// ET-xx00, XP1000
 			 || strcmp(entry->d_name, "root_cfe_auto.bin") == 0		// Solo2
-			 || strcmp(entry->d_name, "root_cfe_auto.jffs2") == 0	// other VU boxes
+			 || strcmp(entry->d_name, "root_cfe_auto.jffs2") == 0		// other VU boxes
 			 || strcmp(entry->d_name, "oe_rootfs.bin") == 0			// DAGS boxes
 			 || strcmp(entry->d_name, "e2jffs2.img") == 0			// Spark boxes
 			 || strcmp(entry->d_name, "rootfs.tar.bz2") == 0		// solo4k
 			 || strcmp(entry->d_name, "rootfs.ubi") == 0)			// Zgemma H9
-#endif
-			if (strcmp(entry->d_name, "rootfs.tar.bz2") == 0)
 			{
 				strcpy(rootfs_filename, path);
 				strcpy(&rootfs_filename[strlen(path)], entry->d_name);
@@ -318,12 +315,9 @@ int read_mtd_file()
 				strcpy(&kernel_device[5], kernel_device_arg);
 				if (kernel_file_stat.st_size <= devsize)
 				{
-#if 0
 					if ((strcmp(name, "\"kernel\"") == 0
 						|| strcmp(name, "\"nkernel\"") == 0
 						|| strcmp(name, "\"kernel2\"") == 0))
-#endif
-					if ((strcmp(name, "\"kernel\"") == 0))
 					{
 						if (kernel_filename[0] != '\0')
 							my_printf("  ->  %s <- User selected!!\n", kernel_filename);
@@ -351,11 +345,8 @@ int read_mtd_file()
 				if (rootfs_file_stat.st_size <= devsize
 					&& strcmp(esize, "0001f000") != 0)
 				{
-#if 0
 					if (strcmp(name, "\"rootfs\"") == 0
 						|| strcmp(name, "\"rootfs2\"") == 0)
-#endif
-					if (strcmp(name, "\"rootfs\"") == 0)
 					{
 						if (rootfs_filename[0] != '\0')
 							my_printf("  ->  %s <- User selected!!\n", rootfs_filename);
@@ -381,13 +372,9 @@ int read_mtd_file()
 				}
 			}
 			// auto kernel
-#if 0
 			else if (!user_kernel
 					&& (strcmp(name, "\"kernel\"") == 0
 						|| strcmp(name, "\"nkernel\"") == 0))
-#endif
-			else if (!user_kernel
-					&& (strcmp(name, "\"kernel\"") == 0))
 			{
 				if (found_kernel_device)
 				{
@@ -742,6 +729,7 @@ int umount_rootfs(int steps)
 	ret += mkdir("/newroot/usr/lib/autofs", 777);
 	ret += mkdir("/newroot/var", 777);
 	ret += mkdir("/newroot/var/volatile", 777);
+
 #if 0
 	if (multilib)
 	{
@@ -763,10 +751,6 @@ int umount_rootfs(int steps)
 	}
 
 	// we need init and libs to be able to exec init u later
-	ret =  system("cp -arf /bin/busybox*     /newroot/bin");
-	ret += system("cp -arf /bin/sh*          /newroot/bin");
-	ret += system("cp -arf /bin/bash*        /newroot/bin");
-
 #if 0
 	if (multilib)
 	{
@@ -791,6 +775,10 @@ int umount_rootfs(int steps)
 		ret += system("cp -arf /lib/libdl*       /newroot/lib");
 	}
 #endif
+	ret =  system("cp -arf /bin/busybox*     /newroot/bin");
+	ret += system("cp -arf /bin/sh*          /newroot/bin");
+	ret += system("cp -arf /bin/bash*        /newroot/bin");
+	ret += system("cp -arf /sbin/init*       /newroot/sbin");
 
 	if (ret != 0)
 	{
