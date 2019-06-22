@@ -2,3 +2,7 @@
 *.a
 ofgwrite_bin
 build
+
+git-*
+go_*
+
